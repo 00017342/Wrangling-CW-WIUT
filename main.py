@@ -1,16 +1,30 @@
 ##import section
 import streamlit as st
+import pandas as pd
 
 ##setting the page up
 st.set_page_config(layout="wide")
+
+##data frame idk better to have it before the sidebar
+df = None
 
 ##setting simple sidebar (will need change)
 with st.sidebar:
     spaceLeft, mainContent, spaceRight = st.columns([0.5, 2, 0.5])
 
     with mainContent:
-        st.write("File Upload")
-        st.button("Upload", width=84)
+        st.header("File Upload")
+        uploaded_file = st.file_uploader(
+            label="Upload file",
+            type=["csv", "xlsx", "xlsm", "xlsb", "xltx", "xltm", "xls"]
+        )
+
+        ##we have different functions for csv and excel... sooo i just check the extension :)
+        if uploaded_file is not None:
+            if uploaded_file.name.endswith(".csv"):
+                df = pd.read_csv(uploaded_file)
+            else:
+                df = pd.read_excel(uploaded_file)
         
         st.write("Workflow")
         st.button("Reset Session")
@@ -35,34 +49,44 @@ with overviewTab:
 
     st.space(size=1)
 
+    ## i added rough calculation of metrics (will maybe need change too because of speed of loading)
+    if df is not None:
+        rows = df.shape[0]
+        columns = df.shape[1]
+        numeric_columns = df.select_dtypes(include="number").shape[1]
+        categorical_columns = df.select_dtypes(include="object").shape[1]
+        datetime_columns = df.select_dtypes(include="datetime").shape[1]
+    else:
+        rows = columns = numeric_columns = categorical_columns = datetime_columns = 0
+
     ##setting columns inside of the overview tab
     rowsColumn, columnsColumn, numericColumn, categoricalColumn, datetimeColumn = st.columns([2, 2, 2, 2, 2])
 
     with rowsColumn:
-        st.header("Number of")
+        st.header(rows)
         st.write("Rows")
 
     with columnsColumn:
-        st.header("Number of")
+        st.header(columns)
         st.write("Columns")
 
     with numericColumn:
-        st.header("Number of")
+        st.header(numeric_columns)
         st.write("Numeric Columns")
 
     with categoricalColumn:
-        st.header("Number of")
+        st.header(categorical_columns)
         st.write("Categorical Columns")
 
     with datetimeColumn:
-        st.header("Number of")
+        st.header(datetime_columns)
         st.write("Datetime Columns")
     
     st.space(size=15)
     
-    st.write("Total columns: will be known...")
+    st.header(f"Total columns: {columns}")
 
-    st.space(size=10)
+    st.space(size=100)
 
     st.header("Data Profiling")
 
