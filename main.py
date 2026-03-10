@@ -41,8 +41,6 @@ overviewTab, cleaningStudioTab, visualizationTab, exportReportTab =\
               width = 1490,\
               default = "Overview")
 
-########################################################
-
 ##setting overview tab (will need change)
 with overviewTab:
     st.header("Dataset Overview")
@@ -93,7 +91,6 @@ with overviewTab:
 
     st.header("Data Profiling")
 
-<<<<<<< HEAD
     st.space(size=20)
 
     ##setting separate column field to create layout inside of overview section
@@ -162,7 +159,7 @@ with overviewTab:
                     st.success("Duplicate rows removed")
         else:
             st.write("No dataset loaded")
-=======
+
     st.space(size=10)
 
     ##setting separate column field to create layout inside of overview section
@@ -235,9 +232,6 @@ with overviewTab:
             else:
                 st.write("Upload dataset")
 
-##################################################################3
->>>>>>> ed7f0ff (changes made to visualization tab design for better UX)
-
 ##setting overview tab (will need change)
 with cleaningStudioTab:
     st.header("Cleaning Studio")
@@ -305,11 +299,7 @@ with cleaningStudioTab:
         with buttonResetCleaningColumn:
             st.button("Reset All")
 
-<<<<<<< HEAD
-##setting overview tab (will need change)
-=======
 ##Visalization TAb
->>>>>>> ed7f0ff (changes made to visualization tab design for better UX)
 with visualizationTab:
     st.header("Visualization")
     st.write("Create interactive charts and explore your dataset visually")
@@ -400,11 +390,7 @@ with visualizationTab:
             st.space(size=30)
             st.header("HERE WILL BE VISUALIZED RESULTS")
 
-<<<<<<< HEAD
-##setting overview tab (will need change)
-=======
 #Export Tab
->>>>>>> ed7f0ff (changes made to visualization tab design for better UX)
 with exportReportTab:
     st.header("Export & Report")
     st.write("Export your cleared dataset, transformation logs and reproducible workflow")
