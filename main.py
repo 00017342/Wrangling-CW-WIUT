@@ -18,7 +18,6 @@ with st.sidebar:
             label="Upload file",
             type=["csv", "xlsx", "xlsm", "xlsb", "xltx", "xltm", "xls"]
         )
-
         ##we have different functions for csv and excel... sooo i just check the extension :)
         if uploaded_file is not None:
             if uploaded_file.name.endswith(".csv"):
@@ -46,8 +45,6 @@ overviewTab, cleaningStudioTab, visualizationTab, exportReportTab =\
 with overviewTab:
     st.header("Dataset Overview")
     st.write("Here you can explore uploaded dataset metrics")
-
-    st.space(size=1)
 
     ## i added rough calculation of metrics (will maybe need change too because of speed of loading)
     if df is not None:
@@ -82,31 +79,82 @@ with overviewTab:
         st.header(datetime_columns)
         st.write("Datetime Columns")
     
-    st.space(size=15)
+    st.space(size=20)
     
     st.header(f"Total columns: {columns}")
 
-    st.space(size=100)
+    st.space(size=20)
 
     st.header("Data Profiling")
 
-    st.space(size=50)
+    st.space(size=20)
 
     ##setting separate column field to create layout inside of overview section
-    datatypesColumn, mvDPColumn = st. columns([4, 4])
+    datatypesColumn, mvDPColumn = st.columns([4, 4])
+
+    ##trying to get all types of columns, names, etc, we will think about changing it a bit and finishing that, some fields
+    ##are now duplicated but we will fix it (will need change)
     with datatypesColumn:
         st.header("Data Types")
-        st.write("here will be info")
-    
+
+        if df is not None:
+            numeric_cols = df.select_dtypes(include="number").columns
+            categorical_cols = df.select_dtypes(include=["object","category"]).columns
+            datetime_cols = df.select_dtypes(include=["datetime","datetimetz"]).columns
+
+            st.write(f"Numeric columns: {len(numeric_cols)}")
+            st.write(f"Categorical columns: {len(categorical_cols)}")
+            st.write(f"Datetime columns: {len(datetime_cols)}")
+
+            st.space(size=10)
+
+            st.subheader("Column Names")
+
+            st.write("Numeric:", ", ".join(numeric_cols) if len(numeric_cols) > 0 else "None")
+            st.write("Categorical:", ", ".join(categorical_cols) if len(categorical_cols) > 0 else "None")
+            st.write("Datetime:", ", ".join(datetime_cols) if len(datetime_cols) > 0 else "None")
+
+        else:
+            st.write("No dataset loaded")
+
+
+    ##checking for missing values
     with mvDPColumn:
         st.header("Missing Values")
-        st.write("here will be info")
+
+        if df is not None:
+            missing_per_column = df.isnull().sum()
+            total_missing = missing_per_column.sum()
+
+            st.write(f"Total missing values: {total_missing}")
+
+            missing_columns = missing_per_column[missing_per_column > 0]
+
+            if len(missing_columns) == 0:
+                st.write("No missing values found")
+            else:
+                for col, count in missing_columns.items():
+                    st.write(f"{col}: {count}")
+        else:
+            st.write("No dataset loaded")
+
         st.space(size=50)
 
+    ##checking for duplicates
     with mvDPColumn:
         st.header("Duplicates")
-        st.write("here will be info")
-        st.button("Remove Duplicates")
+
+        if df is not None:
+            duplicate_count = df.duplicated().sum()
+
+            st.write(f"Total duplicate rows: {duplicate_count}")
+
+            if duplicate_count > 0:
+                if st.button("Remove Duplicates"):
+                    df = df.drop_duplicates()
+                    st.success("Duplicate rows removed")
+        else:
+            st.write("No dataset loaded")
 
 ##setting overview tab (will need change)
 with cleaningStudioTab:
