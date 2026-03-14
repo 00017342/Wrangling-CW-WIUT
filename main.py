@@ -1,6 +1,7 @@
 ##import section
 import streamlit as st
 import pandas as pd
+import plotly.express as px
 
 ##setting the page up
 st.set_page_config(layout="wide")
@@ -61,10 +62,6 @@ with overviewTab:
 
     ##setting columns inside of the overview tab
     rowsColumn, columnsColumn, numericColumn, categoricalColumn, datetimeColumn = st.columns([2, 2, 2, 2, 2])
-
-    # with rowsColumn:
-    #     st.header(rows)
-    #     st.write("Rows")
 
     with rowsColumn:
         st.header(rows)
@@ -365,8 +362,85 @@ with visualizationTab:
                 st.header("Visualization Output")
                 
                 st.space(size=30)
-                st.header("HERE WILL BE VISUALIZED RESULTS")
+                
+                ##copying dataframe to work with it in charts
+                if generate_chart_btn:
+                    filtered_df = df.copy()
+                    if numeric_filter_col != "None":
+                        filtered_df = filtered_df[
+                            (filtered_df[numeric_filter_col] >= value_range[0]) &
+                            (filtered_df[numeric_filter_col] <= value_range[1])
+                        ]
+                    
+                    if cat_filter_col != "None" and selected_categories:
+                        filtered_df = filtered_df[
+                            filtered_df[cat_filter_col].isin(selected_categories)
+                        ]
+                    
+                    x_values = filtered_df.index if x_axis == "Index" else filtered_df[x_axis]
+                    fig = None
 
+                    if chart_type == "Histogram":
+                        fig = px.histogram(filtered_df, x = x_values, color = None
+                                           if group_col == "None"
+                                           else group_col,
+                                           marginal = "box", title = f"Histogram of {x_axis}")
+                
+                    elif chart_type == "Box Plot":
+                        fig = px.box(filtered_df, x = None if group_col == "None" else group_col,
+                                     y = x_axis, color = None if group_col == "None" else group_col, title = "Box Plot")
+                    
+                    ##visualization works not well with y axis and 1 million records
+                    ##soon will be optimized and fixed
+                    elif chart_type == "Scatter Plot":
+                        if y_axis == "None":
+                            st.warning("scatter plot requires Y axis")
+                        else:
+                            fig = px.scatter(filtered_df, x = x_axis, y = y_axis, color = None if group_col == "None" else group_col)
+                    
+                    elif chart_type == "Line Chart":
+                        if y_axis == "None":
+                            st.warning("line chart requires Y axis")
+                        else:
+                            fig = px.line(filtered_df, x = x_axis, y = y_axis, color = None if group_col == "None" else group_col,
+                                          title = f"line chart: {x_axis} vs {y_axis}")
+                    
+                    elif chart_type == "Grouped Bar Chart":
+
+                        if y_axis=="None":
+                            st.warning("Bar chart requires Y Axis")
+
+                        else:
+                            temp_df = filtered_df.copy()
+
+                            if aggregation != "None":
+                                grouped = temp_df.groupby(x_axis)[y_axis]
+
+                                if aggregation == "Sum":
+                                    temp_df = grouped.sum().reset_index()
+                                elif aggregation == "Mean":
+                                    temp_df = grouped.mean().reset_index()
+                                elif aggregation == "Median":
+                                    temp_df = grouped.median().reset_index()
+                                elif aggregation == "Count":
+                                    temp_df = temp_df.groupby(x_values)[y_axis].count().reset_index(name=f"{y_axis}_count")
+                                    y_axis = f"{y_axis}_count"
+
+                            fig = px.bar(
+                                temp_df,
+                                x=x_axis,
+                                y=f"{y_axis}_count" if aggregation=="Count" else y_axis,
+                                color=None if group_col=="None" else group_col,
+                                barmode="group",
+                                title="Grouped Bar Chart"
+                            )
+                    
+                    elif chart_type == "Correlation Heatmap":
+                        corr = filtered_df[numeric_cols].corr()
+                        fig = px.imshow(corr, text_auto = True, color_continuous_scale = "RdBu_r", title = "Correlation Heatmap")
+                    
+                    if fig:
+                        st.plotly_chart(fig, use_container_width = True)
 #Export Tab
 with exportReportTab:
     st.header("Export & Report")
