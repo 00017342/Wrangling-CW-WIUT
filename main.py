@@ -50,19 +50,46 @@ with overviewTab:
     st.header("Dataset Overview")
     st.write("Here you can explore uploaded dataset metrics")
 
+    datetime_columns = []
+    numeric_columns = 0
+    categorical_columns = 0
+
     ## i added rough calculation of metrics (will maybe need change too because of speed of loading)
     if df is not None:
+        datetime_columns = []
+
+        # Loop through all columns to detect datetime columns
+        #broad datetime handling to find datetimes inside of the excel and csv files
+        for col in df.columns:
+            if df[col].dtype == 'object':
+                converted = pd.to_datetime(df[col], errors='coerce')
+                valid_dates = converted.notna().sum()
+                total_values = len(df[col])
+                if valid_dates / total_values > 0.8:
+                    datetime_columns.append(col)
+        datetime_column_count = len(datetime_columns)
         rows = df.shape[0]
+        
+        ##started getting column names to debug
         columns = df.shape[1]
-        numeric_columns = df.select_dtypes(include="number").shape[1]
-        categorical_columns = df.select_dtypes(include="object").shape[1]
-        datetime_columns = df.select_dtypes(include="datetime").shape[1]
+        column_names = df.columns
+
+        ##we need to find exactly numeric columns
+        numeric_cols = df.select_dtypes(include="number").columns
+        numeric_columns = len(numeric_cols)
+        
+        ##we need to find exactly categorical columns
+        categorical_cols = df.select_dtypes(include=["object", "category"]).columns
+        categorical_cols = [col for col in categorical_cols if col not in datetime_columns]
+        categorical_columns = len(categorical_cols)
+
     else:
-        rows = columns = numeric_columns = categorical_columns = datetime_columns = 0
+        rows = columns = numeric_columns = categorical_columns = datetime_column_count = 0
 
     ##setting columns inside of the overview tab
     rowsColumn, columnsColumn, numericColumn, categoricalColumn, datetimeColumn = st.columns([2, 2, 2, 2, 2])
 
+    ##i added names of columns, cat-num-date columns to debug them
     with rowsColumn:
         st.header(rows)
         st.write("Rows")
@@ -70,18 +97,22 @@ with overviewTab:
     with columnsColumn:
         st.header(columns)
         st.write("Columns")
+        st.write(", ".join(column_names))
 
     with numericColumn:
         st.header(numeric_columns)
         st.write("Numeric Columns")
+        st.write(", ".join(numeric_cols))
 
     with categoricalColumn:
         st.header(categorical_columns)
         st.write("Categorical Columns")
+        st.write(", ".join(categorical_cols))
 
     with datetimeColumn:
-        st.header(datetime_columns)
+        st.header(datetime_column_count)
         st.write("Datetime Columns")
+        st.write(", ".join(datetime_columns))
     
     st.space(size=20)
     
@@ -106,9 +137,10 @@ with overviewTab:
             categorical_cols = df.select_dtypes(include=["object","category"]).columns
             datetime_cols = df.select_dtypes(include=["datetime","datetimetz"]).columns
 
-            st.write(f"Numeric columns: {len(numeric_cols)}")
-            st.write(f"Categorical columns: {len(categorical_cols)}")
-            st.write(f"Datetime columns: {len(datetime_cols)}")
+            ##changed variables to show it correct
+            st.write(f"Numeric columns: {numeric_columns}")
+            st.write(f"Categorical columns: {categorical_columns}")
+            st.write(f"Datetime columns: {datetime_column_count}")
 
             st.space(size=10)
 
