@@ -334,6 +334,107 @@ with cleaningStudioTab:
 
                 st.success(f"Removed {rows_removed} duplicate rows")
 
+        with st.expander("Data type conversion"):
+            st.header("Data type conversion")
+
+            selected_cols = st.multiselect(
+                "Select columns",
+                df.columns.tolist()
+            )
+
+            if not selected_cols:
+                st.warning("Select at least one column")
+            else:
+                conversion_type = st.selectbox(
+                    "Conversion type",
+                    [
+                        "To numeric",
+                        "To categorical",
+                        "To datetime"
+                    ]
+                )
+
+                datetime_format = None
+                clean_numeric = False
+
+                if conversion_type == "To datetime":
+                    datetime_format = st.text_input(
+                        "Datetime format (optional, e.g. %Y-%m-%d)"
+                    )
+
+                if conversion_type == "To numeric":
+                    clean_numeric = st.checkbox(
+                        "Clean numeric strings (remove commas, currency symbols)"
+                    )
+
+                def clean_numeric_series(series: pd.Series) -> pd.Series:
+                    return (
+                        series.astype(str)
+                        .str.replace(r"[,\$\€\£]", "", regex=True)
+                        .str.replace(r"\s+", "", regex=True)
+                    )
+
+                def convert_numeric(series: pd.Series) -> pd.Series:
+                    if clean_numeric:
+                        series = clean_numeric_series(series)
+                    return pd.to_numeric(series, errors="coerce")
+
+                def convert_datetime(series: pd.Series) -> pd.Series:
+                    return pd.to_datetime(
+                        series,
+                        format=datetime_format if datetime_format else None,
+                        errors="coerce"
+                    )
+
+                def convert_categorical(series: pd.Series) -> pd.Series:
+                    return series.astype("category")
+
+                conversion_map = {
+                    "To numeric": convert_numeric,
+                    "To datetime": convert_datetime,
+                    "To categorical": convert_categorical,
+                }
+
+                if st.button("Apply", key="dtype_apply"):
+
+                    new_df = df.copy()
+
+                    total_rows_affected = 0
+                    total_errors = 0
+                    processed_columns = 0
+
+                    for col in selected_cols:
+                        series = new_df[col]
+
+                        try:
+                            before_na = series.isna().sum()
+                            before_non_na = series.notna().sum()
+
+                            convert_fn = conversion_map[conversion_type]
+                            converted = convert_fn(series)
+
+                            after_na = converted.isna().sum()
+
+
+                            conversion_errors = max(after_na - before_na, 0)
+
+                            changes_mask = ~(series == converted) & ~(series.isna() & converted.isna())
+                            rows_changed = changes_mask.sum()
+
+                            new_df[col] = converted
+
+                            total_rows_affected += rows_changed
+                            total_errors += conversion_errors
+                            processed_columns += 1
+
+                        except Exception as e:
+                            total_errors += 1
+                            st.warning(f"Error processing column '{col}': {e}")
+
+                    st.success(f"Columns processed: {processed_columns}")
+                    st.info(f"Rows actually changed: {total_rows_affected}")
+                    st.warning(f"Values coerced to NaN (conversion errors): {total_errors}")
+
         with st.expander("Categorical cleaning"):
             st.header("Categorical cleaning")
 
