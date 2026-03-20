@@ -589,8 +589,201 @@ with cleaningStudioTab:
         with st.expander("Outlier handling"):
             st.header("Outlier handling")
 
+            numeric_cols = df.select_dtypes(include=["number"]).columns.tolist()
+
+            if not numeric_cols:
+                st.warning("No numeric columns available")
+                st.stop()
+
+            selected_cols = st.multiselect(
+                "Select numeric columns",
+                numeric_cols,
+                key="outlier_cols"
+            )
+
+            if not selected_cols:
+                st.warning("Select at least one column")
+            else:
+
+                action = st.selectbox(
+                    "Action",
+                    ["Show only", "Cap (Winsorize)", "Remove rows"],
+                    key="outlier_action"
+                )
+
+                lower_q = st.slider("Lower quantile", 0.0, 0.5, 0.05, 0.01, key="outlier_lq")
+                upper_q = st.slider("Upper quantile", 0.5, 1.0, 0.95, 0.01, key="outlier_uq")
+
+                def get_iqr_bounds(series: pd.Series):
+                    q1 = series.quantile(0.25)
+                    q3 = series.quantile(0.75)
+                    iqr = q3 - q1
+                    return q1 - 1.5 * iqr, q3 + 1.5 * iqr
+
+                def detect_outliers(series: pd.Series):
+                    lower, upper = get_iqr_bounds(series)
+                    return (series < lower) | (series > upper)
+
+                if st.button("Apply", key="outlier_apply"):
+
+                    new_df = df.copy()
+
+                    summary = []
+                    total_outliers = 0
+                    total_removed = 0
+                    total_capped = 0
+
+                    for col in selected_cols:
+                        try:
+                            series = new_df[col]
+
+                            if series.isna().all():
+                                st.warning(f"{col}: all values are NaN, skipped")
+                                continue
+
+                            mask = detect_outliers(series)
+                            count = int(mask.sum())
+
+                            total_outliers += count
+
+                            col_info = {
+                                "column": col,
+                                "outliers": count,
+                                "min": float(series.min()),
+                                "max": float(series.max())
+                            }
+
+                            if action == "Cap (Winsorize)":
+                                lower_cap = series.quantile(lower_q)
+                                upper_cap = series.quantile(upper_q)
+
+                                capped = series.clip(lower=lower_cap, upper=upper_cap)
+                                changed = int((series != capped).sum())
+
+                                total_capped += changed
+                                new_df[col] = capped
+
+                                col_info["capped"] = changed
+
+                            summary.append(col_info)
+
+                        except Exception as e:
+                            st.warning(f"{col}: {e}")
+
+                    if action == "Remove rows":
+                        combined_mask = pd.Series(False, index=new_df.index)
+
+                        for col in selected_cols:
+                            combined_mask |= detect_outliers(new_df[col])
+
+                        before = len(new_df)
+                        new_df = new_df[~combined_mask]
+                        total_removed = before - len(new_df)
+
+                    st.success(f"Total outliers detected: {total_outliers}")
+
+                    if action == "Cap (Winsorize)":
+                        st.info(f"Values capped: {total_capped}")
+
+                    if action == "Remove rows":
+                        st.warning(f"Rows removed: {total_removed}")
+
+                    st.dataframe(pd.DataFrame(summary))
+
         with st.expander("Scaling"):
             st.header("Scaling")
+
+            numeric_cols = df.select_dtypes(include=["number"]).columns.tolist()
+
+            if not numeric_cols:
+                st.warning("No numeric columns available")
+                st.stop()
+
+            selected_cols = st.multiselect(
+                "Select numeric columns",
+                numeric_cols,
+                key="scaling_cols"
+            )
+
+            if not selected_cols:
+                st.warning("Select at least one column")
+            else:
+
+                method = st.selectbox(
+                    "Scaling method",
+                    ["Min-Max Scaling", "Z-score Standardization"],
+                    key="scaling_method"
+                )
+
+                def min_max_scale(series: pd.Series):
+                    min_val, max_val = series.min(), series.max()
+                    if min_val == max_val:
+                        return None
+                    return (series - min_val) / (max_val - min_val)
+
+                def z_score_scale(series: pd.Series):
+                    mean, std = series.mean(), series.std()
+                    if std == 0:
+                        return None
+                    return (series - mean) / std
+
+                if st.button("Apply", key="scaling_apply"):
+
+                    new_df = df.copy()
+                    stats_output = []
+
+                    for col in selected_cols:
+                        try:
+                            series = new_df[col]
+
+                            if series.isna().all():
+                                st.warning(f"{col}: all values are NaN, skipped")
+                                continue
+
+                            before = {
+                                "mean": float(series.mean()),
+                                "std": float(series.std()),
+                                "min": float(series.min()),
+                                "max": float(series.max())
+                            }
+
+                            if method == "Min-Max Scaling":
+                                scaled = min_max_scale(series)
+                            else:
+                                scaled = z_score_scale(series)
+
+                            if scaled is None:
+                                st.warning(f"{col}: cannot scale (constant or zero std)")
+                                continue
+
+                            new_df[col] = scaled
+
+                            after = {
+                                "mean": float(scaled.mean()),
+                                "std": float(scaled.std()),
+                                "min": float(scaled.min()),
+                                "max": float(scaled.max())
+                            }
+
+                            stats_output.append({
+                                "column": col,
+                                "before_mean": before["mean"],
+                                "after_mean": after["mean"],
+                                "before_std": before["std"],
+                                "after_std": after["std"],
+                                "before_min": before["min"],
+                                "after_min": after["min"],
+                                "before_max": before["max"],
+                                "after_max": after["max"],
+                            })
+
+                        except Exception as e:
+                            st.warning(f"{col}: {e}")
+
+                    if stats_output:
+                        st.dataframe(pd.DataFrame(stats_output))
+
+                    st.success("Scaling applied successfully")
 
         with st.expander("Column operations"):
             st.header("Column operations")
