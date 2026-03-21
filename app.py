@@ -3,7 +3,11 @@ import pandas as pd
 import plotly.express as px
 import json
 import io
+import re
 from datetime import datetime
+import math
+import matplotlib.pyplot as plt
+
 
 st.set_page_config(layout="wide")
 
@@ -22,7 +26,6 @@ for _k, _v in _DEFAULTS.items():
     if _k not in st.session_state:
         st.session_state[_k] = _v
 
-@st.cache_data(show_spinner=False)
 def _detect_datetime_cols(df: pd.DataFrame) -> list:
     """Return columns whose values parse as datetimes in >80 % of rows."""
     result = []
@@ -43,6 +46,25 @@ def _missing_per_col(df: pd.DataFrame) -> pd.Series:
 
 
 @st.cache_data(show_spinner=False)
+def _build_missing_summary(df: pd.DataFrame) -> tuple[int, pd.DataFrame]:
+    missing_per_column = _missing_per_col(df)
+    total_missing = int(missing_per_column.sum())
+    missing_columns = missing_per_column[missing_per_column > 0]
+
+    summary_df = (
+        missing_columns.rename("missing_count")
+        .reset_index()
+        .rename(columns={"index": "column"})
+    )
+
+    summary_df["Missing %"] = (
+        summary_df["missing_count"] / len(df) * 100
+    ).round(1)
+
+    return total_missing, summary_df
+
+
+@st.cache_data(show_spinner=False)
 def _count_duplicates(df: pd.DataFrame, subset, keep) -> int:
     """Count duplicate rows.  subset must be a tuple (hashable) or None."""
     subset_list = list(subset) if subset else None
@@ -55,6 +77,34 @@ def _dup_preview(df: pd.DataFrame, subset, keep) -> pd.DataFrame:
     subset_list = list(subset) if subset else None
     mask = df.duplicated(subset=subset_list, keep=keep)
     return df[mask].head(20)
+
+
+def _build_formula_env(df: pd.DataFrame):
+    """Create safe aliases so formulas can reference unsafe column names."""
+    env = {}
+    alias_lookup = {}
+    used_aliases = set()
+
+    for idx, col in enumerate(df.columns):
+        alias = re.sub(r"\W|^(?=\d)", "_", str(col)).strip("_") or f"col_{idx}"
+        base_alias = alias
+        suffix = 1
+        while alias in used_aliases:
+            alias = f"{base_alias}_{suffix}"
+            suffix += 1
+        used_aliases.add(alias)
+        env[alias] = df[col]
+        alias_lookup[str(col)] = alias
+
+    return env, alias_lookup
+
+
+def _prepare_formula(expr: str, alias_lookup: dict) -> str:
+    """Replace [Original Column Name] references with safe aliases."""
+    prepared = expr
+    for col in sorted(alias_lookup, key=len, reverse=True):
+        prepared = prepared.replace(f"[{col}]", alias_lookup[col])
+    return prepared
 
 
 def save_snapshot():
@@ -313,19 +363,12 @@ with overviewTab:
     with mvCol:
         st.subheader("Missing Values")
         if df is not None:
-            missing_per_column = _missing_per_col(df)
-            total_missing      = int(missing_per_column.sum())
+            total_missing, missing_summary_df = _build_missing_summary(df)
             st.write(f"Total missing values: **{total_missing}**")
-            missing_columns    = missing_per_column[missing_per_column > 0]
-            if missing_columns.empty:
+            if missing_summary_df.empty:
                 st.success("No missing values found")
             else:
-                st.dataframe(
-                    missing_columns.rename("missing_count")
-                        .reset_index()
-                        .rename(columns={"index": "column"}),
-                    width="stretch",
-                )
+                st.dataframe(missing_summary_df, width="stretch")
         else:
             st.info("No dataset loaded")
 
@@ -371,7 +414,7 @@ with cleaningStudioTab:
             show_toast()
             show_last_result()
 
-            with st.expander("Missing values", key="exp_mv"):
+            with st.expander("Missing values"):
                 selected_cols = st.multiselect(
                     "Columns", df.columns.tolist(), key=f"mv_cols_{gen}"
                 )
@@ -392,14 +435,32 @@ with cleaningStudioTab:
 
                     action = st.selectbox(
                         "Action",
-                        ["Drop rows", "Fill numeric with median", "Fill numeric with mean",
-                         "Fill categorical with mode", "Fill with custom value"],
+                        ["Drop rows", "Drop rows above threshold", "Fill numeric with median", "Fill numeric with mean", 
+                         "Fill numeric with mode", "Fill categorical with the most frequent", 
+                         "Drop columns above threshold", "Forward fill", "Backward fill", 
+                         "Fill with custom value",],
                         key=f"mv_action_{gen}",
                     )
 
                     custom_value = None
                     if action == "Fill with custom value":
                         custom_value = st.text_input("Custom value", key=f"mv_custom_{gen}")
+                    elif action == "Drop rows":
+                        rows_to_drop = int(df[selected_cols].isna().any(axis=1).sum())
+                        row_threshold = None
+                        if rows_to_drop == 0:
+                                st.info("No rows would be removed for the selected columns.")
+                        else:
+                             st.warning(f"{rows_to_drop} row(s) will be removed")
+                    if action == "Drop rows above threshold":
+                        row_threshold = st.slider(
+                            "Row missing threshold (%)",
+                            min_value=0.0,
+                            max_value=100.0,
+                            value=50.0,
+                            step=1.0,
+                            key=f"mv_row_threshold_{gen}",
+                        )
 
                     if st.button("Apply", key=f"mv_apply_{gen}"):
                         new_df = df.copy()
@@ -408,24 +469,40 @@ with cleaningStudioTab:
                             before        = len(new_df)
                             new_df        = new_df.dropna(subset=selected_cols)
                             rows_affected = before - len(new_df)
+                            if rows_affected == 0:
+                                st.warning("No rows were removed.")
+                                st.stop()
+                        elif action == "Drop rows above threshold":
+                            before = len(new_df)
+                            row_missing_pct = new_df[selected_cols].isna().mean(axis=1) * 100
+                            drop_mask = row_missing_pct > row_threshold
+                            new_df = new_df.loc[~drop_mask].copy()
+                            rows_affected = int(drop_mask.sum())
                         else:
                             rows_affected = 0
                             for col in selected_cols:
-                                mask  = new_df[col].isna()
-                                count = int(mask.sum())
-                                if count == 0:
+                                mask = new_df[col].isna()
+                                before_na = int(mask.sum())
+                                if before_na == 0:
                                     continue
+
                                 if action == "Fill numeric with median" and pd.api.types.is_numeric_dtype(new_df[col]):
                                     new_df.loc[mask, col] = new_df[col].median()
                                 elif action == "Fill numeric with mean" and pd.api.types.is_numeric_dtype(new_df[col]):
                                     new_df.loc[mask, col] = new_df[col].mean()
-                                elif action == "Fill categorical with mode" and not pd.api.types.is_numeric_dtype(new_df[col]):
+                                elif action == "Fill categorical with the most frequent" and not pd.api.types.is_numeric_dtype(new_df[col]):
                                     mode_val = new_df[col].mode(dropna=True)
                                     if not mode_val.empty:
-                                        new_df.loc[mask, col] = mode_val.iloc[0]
+                                        new_df.loc[mask, col] = mode_val.iloc[0]                                        
+                                elif action == "Forward fill":
+                                    new_df.loc[mask, col] = new_df[col].ffill().loc[mask]
+                                elif action == "Backward fill":
+                                    new_df.loc[mask, col] = new_df[col].bfill().loc[mask]
                                 elif action == "Fill with custom value":
                                     new_df.loc[mask, col] = custom_value
-                                rows_affected += count
+
+                                after_na = int(new_df[col].isna().sum())
+                                rows_affected += before_na - after_na
 
                         commit(
                             new_df, "Missing Values",
@@ -434,7 +511,7 @@ with cleaningStudioTab:
                             f"across {len(selected_cols)} column(s)",
                         )
 
-            with st.expander("Duplicate handling", key="exp_dup"):
+            with st.expander("Duplicate handling"):
                 dup_mode = st.radio(
                     "Check duplicates by",
                     ["All columns", "Selected columns"],
@@ -451,11 +528,11 @@ with cleaningStudioTab:
 
                 keep_option = st.selectbox(
                     "Action",
-                    ["Keep first", "Keep last", "Remove all duplicates"],
+                    ["Keep first", "Keep last", "Remove all duplicates (no copies)"],
                     key=f"dup_keep_{gen}",
                 )
                 keep_map = {"Keep first": "first", "Keep last": "last",
-                            "Remove all duplicates": False}
+                            "Remove all duplicates (no copies)": False}
                 keep_val = keep_map[keep_option]
 
                 can_preview = not (dup_mode == "Selected columns" and not subset_cols)
@@ -485,7 +562,7 @@ with cleaningStudioTab:
                             f"Removed {rows_removed} duplicate row(s)",
                         )
 
-            with st.expander("Data type conversion", key="exp_dtype"):
+            with st.expander("Data type conversion"):
                 st.subheader("Data type conversion")
 
                 selected_cols = st.multiselect(
@@ -506,7 +583,7 @@ with cleaningStudioTab:
 
                     if conversion_type == "To datetime":
                         datetime_format = st.text_input(
-                            "Datetime format (optional, e.g. %Y-%m-%d)",
+                            "Specify format of given column(optional, e.g. %Y-%m-%d)",
                             key=f"dtype_dtfmt_{gen}",
                         )
                     if conversion_type == "To numeric":
@@ -574,7 +651,7 @@ with cleaningStudioTab:
                             result=result_data,
                         )
 
-            with st.expander("Categorical cleaning", key="exp_cat"):
+            with st.expander("Categorical cleaning"):
                 st.subheader("Categorical cleaning")
 
                 selected_cols = st.multiselect(
@@ -635,7 +712,7 @@ with cleaningStudioTab:
                     rare_label     = "Other"
                     if enable_rare:
                         rare_threshold = st.slider(
-                            "Threshold (proportion)", 0.0, 1.0, 0.05, 0.01, key=f"cat_rare_thresh_{gen}"
+                            "Set threshold (proportion). Below this value, will be labeled as 'Other'", 0.0, 1.0, 0.05, 0.01, key=f"cat_rare_thresh_{gen}"
                         )
                         rare_label = st.text_input(
                             "Rare category label", value="Other", key=f"cat_rare_label_{gen}"
@@ -717,7 +794,7 @@ with cleaningStudioTab:
                                 f"across {total_columns_affected} column(s)",
                             )
 
-            with st.expander("Outlier handling", key="exp_outlier"):
+            with st.expander("Outlier handling"):
                 st.subheader("Outlier handling")
 
                 numeric_cols_outlier = df.select_dtypes(include=["number"]).columns.tolist()
@@ -828,7 +905,7 @@ with cleaningStudioTab:
                                     result=result_data,
                                 )
 
-            with st.expander("Scaling", key="exp_scaling"):
+            with st.expander("Scaling"):
                 st.subheader("Scaling")
 
                 numeric_cols_scaling = df.select_dtypes(include=["number"]).columns.tolist()
@@ -909,7 +986,7 @@ with cleaningStudioTab:
                                     result={"label": label, "df": pd.DataFrame(stats_output)},
                                 )
 
-            with st.expander("Column operations", key="exp_colops"):
+            with st.expander("Column operations"):
                 st.subheader("Column operations")
 
                 operation = st.selectbox(
@@ -983,13 +1060,15 @@ with cleaningStudioTab:
                         "Supported operators: +  −  *  /  **  %"
                     )
 
+                    st.info("For columns with spaces or special characters, use [Column Name] in the formula.")
                     with st.form(key=f"formula_form_{gen}"):
                         formula_col_name = st.text_input(
                             "New column name", placeholder="e.g. profit_margin",
                             key=f"formula_form_colname_{gen}",
                         )
                         formula_expr = st.text_input(
-                            "Formula", placeholder="e.g. revenue - cost",
+                            "Formula",
+                            placeholder="e.g. revenue - cost or [Units Sold] * [Unit Price]",
                             key=f"formula_form_expr_{gen}",
                         )
                         formula_submitted = st.form_submit_button("Create column")
@@ -1009,9 +1088,10 @@ with cleaningStudioTab:
                         else:
                             try:
                                 tmp = df.copy()
-                                env = {c: tmp[c] for c in tmp.columns}
+                                env, alias_lookup = _build_formula_env(tmp)
+                                prepared_expr = _prepare_formula(expr_clean, alias_lookup)
                                 tmp[col_name_clean] = eval(
-                                    expr_clean, {"__builtins__": {}}, env
+                                    prepared_expr, {"__builtins__": {}}, env
                                 )
                                 new_df = tmp
                             except Exception as exc:
@@ -1126,7 +1206,7 @@ with cleaningStudioTab:
                                     f"Quantile binning applied → '{newcol_clean}'",
                                 )
 
-            with st.expander("Data validation", key="exp_validation"):
+            with st.expander("Data validation"):
                 st.subheader("Data validation")
                 st.caption("Validation reports violations only — it does not modify the dataset.")
 
@@ -1184,6 +1264,17 @@ with cleaningStudioTab:
                            if st.session_state.history else df_current)
 
             with st.container(border=True):
+                st.subheader("Current Data Preview")
+                if df_current is not None:
+                    st.caption(
+                        f"Showing first 10 rows · "
+                        f"{df_current.shape[0]:,} rows × {df_current.shape[1]} columns total"
+                    )
+                    st.dataframe(df_current.head(10), width="stretch")
+                else:
+                    st.info("No data loaded")
+
+            with st.container(border=True):
                 st.subheader("Transformation Preview")
 
                 if df_current is not None:
@@ -1213,10 +1304,17 @@ with cleaningStudioTab:
                     st.divider()
                     q1, q2 = st.columns(2)
                     with q1:
+                        total_missing, missing_summary_df = _build_missing_summary(df_current)
+
                         st.metric(
                             "Missing Values",
-                            f"{int(_missing_per_col(df_current).sum()):,}"
+                            f"{total_missing:,}"
                         )
+
+                        if missing_summary_df.empty:
+                            st.caption("No columns with missing values.")
+                        else:
+                            st.dataframe(missing_summary_df, width="stretch")
                     with q2:
                         st.metric(
                             "Duplicate Rows",
@@ -1267,18 +1365,6 @@ with cleaningStudioTab:
                 else:
                     st.caption("No transformations yet — apply a step to see it logged here.")
 
-            with st.container(border=True):
-                st.subheader("Current Data Preview")
-                if df_current is not None:
-                    st.caption(
-                        f"Showing first 20 rows · "
-                        f"{df_current.shape[0]:,} rows × {df_current.shape[1]} columns total"
-                    )
-                    st.dataframe(df_current.head(20), width="stretch")
-                else:
-                    st.info("No data loaded")
-
-
 with visualizationTab:
     st.header("Visualization")
     st.write("Create interactive charts and explore your dataset visually")
@@ -1302,7 +1388,7 @@ with visualizationTab:
                 chart_type = st.selectbox(
                     "Chart Type",
                     ["Histogram", "Box Plot", "Scatter Plot", "Line Chart",
-                     "Grouped Bar Chart", "Correlation Heatmap"],
+                     "Bar Chart", "Correlation Heatmap"],
                     key="viz_chart_type",
                 )
 
@@ -1379,7 +1465,8 @@ with visualizationTab:
                                 fig = px.histogram(
                                     filtered_df, x=x_axis,
                                     color=None if group_col == "None" else group_col,
-                                    marginal="box", title=f"Histogram of {x_axis}",
+                                    # marginal="box", 
+                                    title=f"Histogram of {x_axis}",
                                 )
                             elif chart_type == "Box Plot":
                                 fig = px.box(
@@ -1407,7 +1494,7 @@ with visualizationTab:
                                         color=None if group_col == "None" else group_col,
                                         title=f"Line Chart: {x_axis} vs {y_axis}",
                                     )
-                            elif chart_type == "Grouped Bar Chart":
+                            elif chart_type == "Bar Chart":
                                 if not y_axis or y_axis == "None":
                                     st.warning("Bar chart requires a Y axis")
                                 else:
@@ -1429,7 +1516,7 @@ with visualizationTab:
                                     fig = px.bar(
                                         temp_df, x=x_axis, y=y_col,
                                         color=None if group_col == "None" else group_col,
-                                        barmode="group", title="Grouped Bar Chart",
+                                        barmode="group", title="Bar Chart",
                                     )
                             elif chart_type == "Correlation Heatmap":
                                 if not numeric_cols:
@@ -1441,9 +1528,8 @@ with visualizationTab:
                                         color_continuous_scale="RdBu_r",
                                         title="Correlation Heatmap",
                                     )
-
-                            if fig is not None:
-                                st.plotly_chart(fig, width="stretch")
+                        
+                            st.plotly_chart(fig, width="stretch")
 
                         except Exception as e:
                             st.error(f"Chart generation error: {e}")
