@@ -83,4 +83,4 @@ streamlit run app.py
 
 ## Deployed version link
 
-here will be link
+https://wrangling-cw-wiut-wejhba5zyh7mv2wtcfd6pp.streamlit.app/
