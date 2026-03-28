@@ -1,0 +1,165 @@
+{
+  "version": "1.0",
+  "created_at": "2026-03-28T22:58:45.173795",
+  "source": {
+    "filename": "google_sheet_1irUn-bXBW4uUAjbniyHHbCun-cTT-5lIjZZ0HrLLLaI_0.csv",
+    "file_type": "google_sheet",
+    "source_url": "https://docs.google.com/spreadsheets/d/1irUn-bXBW4uUAjbniyHHbCun-cTT-5lIjZZ0HrLLLaI/edit?gid=0#gid=0",
+    "sheet_id": "1irUn-bXBW4uUAjbniyHHbCun-cTT-5lIjZZ0HrLLLaI",
+    "gid": "0",
+    "rows": 12575,
+    "columns": 11,
+    "schema": {
+      "Transaction ID": "object",
+      "Customer ID": "object",
+      "Category": "object",
+      "Item": "object",
+      "Price Per Unit": "object",
+      "Quantity": "float64",
+      "Total Spent": "float64",
+      "Payment Method": "object",
+      "Location": "object",
+      "Transaction Date": "object",
+      "Discount Applied": "float64"
+    }
+  },
+  "steps": [
+    {
+      "step": 1,
+      "action": "Missing Values",
+      "details": {
+        "action": "Fill numeric with median",
+        "columns": [
+          "Quantity",
+          "Total Spent",
+          "Price Per Unit"
+        ],
+        "rows_affected": 1208
+      },
+      "before_shape": [
+        12575,
+        11
+      ],
+      "after_shape": [
+        12575,
+        11
+      ],
+      "timestamp": "2026-03-28 22:53:56"
+    },
+    {
+      "step": 2,
+      "action": "Missing Values",
+      "details": {
+        "action": "Fill categorical with the most frequent",
+        "columns": [
+          "Item"
+        ],
+        "rows_affected": 1213
+      },
+      "before_shape": [
+        12575,
+        11
+      ],
+      "after_shape": [
+        12575,
+        11
+      ],
+      "timestamp": "2026-03-28 22:54:24"
+    },
+    {
+      "step": 3,
+      "action": "Missing Values",
+      "details": {
+        "action": "Drop rows",
+        "columns": [
+          "Discount Applied"
+        ],
+        "rows_affected": 4199
+      },
+      "before_shape": [
+        12575,
+        11
+      ],
+      "after_shape": [
+        8376,
+        11
+      ],
+      "timestamp": "2026-03-28 22:55:07"
+    },
+    {
+      "step": 4,
+      "action": "Data Type Conversion",
+      "details": {
+        "type": "To numeric",
+        "columns": [
+          "Price Per Unit"
+        ],
+        "rows_changed": 7972,
+        "coerced_to_nan": 0
+      },
+      "before_shape": [
+        8376,
+        11
+      ],
+      "after_shape": [
+        8376,
+        11
+      ],
+      "timestamp": "2026-03-28 22:55:36"
+    },
+    {
+      "step": 5,
+      "action": "Scaling",
+      "details": {
+        "method": "Z-score Standardization (Mean=0, Std=1)",
+        "columns": [
+          "Price Per Unit"
+        ]
+      },
+      "before_shape": [
+        8376,
+        11
+      ],
+      "after_shape": [
+        8376,
+        11
+      ],
+      "timestamp": "2026-03-28 22:56:25"
+    },
+    {
+      "step": 6,
+      "action": "Rename Column",
+      "details": {
+        "mapping": {
+          "Transaction ID": "ID of Purchase"
+        }
+      },
+      "before_shape": [
+        8376,
+        11
+      ],
+      "after_shape": [
+        8376,
+        11
+      ],
+      "timestamp": "2026-03-28 22:57:05"
+    }
+  ],
+  "final": {
+    "rows": 8376,
+    "columns": 11,
+    "schema": {
+      "ID of Purchase": "object",
+      "Customer ID": "object",
+      "Category": "object",
+      "Item": "object",
+      "Price Per Unit": "float64",
+      "Quantity": "float64",
+      "Total Spent": "float64",
+      "Payment Method": "object",
+      "Location": "object",
+      "Transaction Date": "object",
+      "Discount Applied": "float64"
+    }
+  }
+}
