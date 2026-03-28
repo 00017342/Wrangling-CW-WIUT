@@ -1,11 +1,11 @@
-# 📊 Data Cleaning & Visualization App
+# Data Cleaning & Visualization App
 # Developed for the DWV CW by students: 17342 and 18431
 
-This is a simple Streamlit app for uploading, cleaning, and exploring datasets. It helps you quickly understand your data, fix common issues, and create visualizations — all in one place.
+This is a simple Streamlit app for uploading, cleaning, and exploring datasets. It helps you quickly understand your data, fix common issues, and create visualizations all in one place.
 
 ---
 
-## 🚀 What it does
+## What it does
 
 **Upload & Overview**
 
@@ -41,7 +41,7 @@ This is a simple Streamlit app for uploading, cleaning, and exploring datasets. 
 
 ---
 
-## ⚙️ Tech Stack
+## Tech Stack
 
 * Python
 * Streamlit
@@ -50,21 +50,29 @@ This is a simple Streamlit app for uploading, cleaning, and exploring datasets. 
 
 ---
 
-## ▶️ Project structure
+## AI Assistance
 
-├── ./modules/
-├── ./Report.docx
-├── ./demo_video.mp4
-├── ./Transformation report example file
-├── ./AI_USAGE.md
-├── ./sample_data/
-├── ./app.py
-├── ./README.md
-├── ./requirements.txt
+AI tools were used during development as support for brainstorming, code structure review, debugging, and understanding implementation issues. The final application was not generated automatically: all AI outputs were reviewed, tested, and adapted by the authors before being included in the project.
+
+See `AI_USAGE.md` for the full AI usage statement.
 
 ---
 
-## ▶️ Run locally
+## Project structure
+
+* `./modules/`
+* `./Report.docx`
+* `./demo_video.mp4`
+* `./Transformation report example file`
+* `./AI_USAGE.md`
+* `./sample_data/`
+* `./app.py`
+* `./README.md`
+* `./requirements.txt`
+
+---
+
+## Run locally
 
 ```bash
 pip install -r requirements.txt
@@ -73,5 +81,6 @@ streamlit run app.py
 
 ---
 
-## 🚀 Deployed version link
+## Deployed version link
+
 here will be link
